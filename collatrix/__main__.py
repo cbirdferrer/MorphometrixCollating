@@ -1,7 +1,7 @@
 #---------------------------------------------------------------
 #__main__.py
 
-#updated by: Clara Bird, January 2024
+#updated by: Clara Bird, October 2024
 #----------------------------------------------------------------
 
 #import modules
@@ -22,6 +22,9 @@ from PySide6.QtWidgets import QFileDialog, QApplication, QMainWindow, QPushButto
 from PySide6.QtCore import Qt, QMetaObject
 from PySide6.QtGui import QFont, QDoubleValidator, QStandardItemModel, QStandardItem, QIcon
 
+
+# UPDATE WITH UPDATES
+cx_version = "v2.0"
 
 class FileSelector:
     def select_file():
@@ -86,7 +89,8 @@ class lidarwranglerWindow(QWidget):
         
         self.grid_layout = QGridLayout()
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #add inputs
         welcome_label = QLabel("Welcome to the lidar wrangling tool!")
@@ -105,6 +109,10 @@ class lidarwranglerWindow(QWidget):
         #lidar kind drop box
         self.lidartypes_list = QComboBox(self)
         self.lidartypes_list.addItems(['LightWare (csv)','LemHex (gpx)'])
+
+        #lidar gimbal drop box
+        self.gimbal_list = QComboBox(self)
+        self.gimbal_list.addItems(['fixed','gimbaled'])
 
         #output prefix and folder selection
         self.output_prefix_box = QLineEdit()
@@ -128,7 +136,7 @@ class lidarwranglerWindow(QWidget):
         #### GRID LAYOUT ####
         #add labels and buttons to grid layout
         self.grid_layout.addWidget(welcome_label,0,0,1,2)
-        self.grid_layout.addItem(spacer, 1, 0,1,2)
+        self.grid_layout.addItem(spacer1, 1, 0,1,2)
 
         ## LIDAR FOLDER, OUTPUT SETTINGS, and RUN BUTTON
         self.grid_layout.addWidget(QLabel("Click to select folder containing lidar files"),2,1,1,1)
@@ -139,19 +147,22 @@ class lidarwranglerWindow(QWidget):
         self.grid_layout.addWidget(QLabel("Select which lidar you used"),4,0,1,1)
         self.grid_layout.addWidget(self.lidartypes_list,4,1,1,1)
 
-        self.grid_layout.addWidget(QLabel("Output prefix:"),5,0,1,1)
-        self.grid_layout.addWidget(self.output_prefix_box,5,1,1,1)
+        self.grid_layout.addWidget(QLabel("Lidar mount:"),5,0,1,1)
+        self.grid_layout.addWidget(self.gimbal_list,5,1,1,1)
 
-        self.grid_layout.addWidget(QLabel("Click to select folder where output should be saved"),6,1,1,1)
-        self.grid_layout.addWidget(outfold_button, 6,0,1,1)
+        self.grid_layout.addWidget(QLabel("Output prefix:"),6,0,1,1)
+        self.grid_layout.addWidget(self.output_prefix_box,6,1,1,1)
 
-        self.grid_layout.addWidget(self.outfold_sel_label, 7,0,1,2)
+        self.grid_layout.addWidget(QLabel("Click to select folder where output should be saved"),7,1,1,1)
+        self.grid_layout.addWidget(outfold_button, 7,0,1,1)
 
-        self.grid_layout.addItem(spacer, 8, 0,1,2)
+        self.grid_layout.addWidget(self.outfold_sel_label, 8,0,1,2)
 
-        self.grid_layout.addWidget(lidarwrangle_run_button,9,0,1,2)
+        self.grid_layout.addItem(spacer2, 9, 0,1,2)
 
-        self.grid_layout.addWidget(self.end_msg,10,0,1,2)
+        self.grid_layout.addWidget(lidarwrangle_run_button,10,0,1,2)
+
+        self.grid_layout.addWidget(self.end_msg,11,0,1,2)
 
         # Create a scroll area and set your grid layout as its widget
         scroll_area = QScrollArea()
@@ -178,25 +189,27 @@ class lidarwranglerWindow(QWidget):
     def lidarwrangle(self):
         # wrangle lightaware data
         if self.lidartypes_list.currentText() == 'LightWare (csv)':
-            print("lightware")
-            lidar_files = [os.path.join(r, m) for r, dirs, files in os.walk(self.lidarpath) 
-                                        for m in files if (m.endswith('.csv') | m.endswith('.CSV')) & ~m.startswith(".")]
+            lidar_files = [os.path.join(r, m) for r, dirs, files in os.walk(self.lidarpath) for m in files if m.endswith(('.csv',".CSV")) & ~m.startswith(".")]
             laser_all = pd.DataFrame(data={})
             for lf in lidar_files:
                 df_laser = pd.read_csv(lf,sep='\t',skiprows=2) #read in lidar file, seperator is a tab, skip the first two rows, they have too few columns
                 df_laser['laser_altitude_cm'] = df_laser['laser_altitude_cm'].replace(dict.fromkeys([13000,15000], np.nan)) #make the error value (130) to nan
-                df_laser['converted'] = [math.cos((x) * math.pi / float(180)) for x in df_laser['tilt_deg']] #calculate conversation factor based on tilt degree (from Dawson paper code)
-                df_laser['Laser_Alt'] = (df_laser['laser_altitude_cm'] * df_laser['converted']) / float(100) #use conversation factor to calculate corrected laser altitude (from Dawson)
+                
+                if self.gimbal_list.currentText() == 'fixed':
+                    df_laser['converted'] = [math.cos((x) * math.pi / float(180)) for x in df_laser['tilt_deg']] #calculate conversation factor based on tilt degree (from Dawson paper code)
+                    df_laser['Laser_Alt'] = (df_laser['laser_altitude_cm'] * df_laser['converted']) / float(100) #use conversation factor to calculate corrected laser altitude (from Dawson)
+
+                elif self.gimbal_list.currentText() == 'gimbaled':
+                    df_laser['Laser_Alt'] = df_laser['laser_altitude_cm'] / float(100)
+
                 df_laser['CorrDT'] = [datetime.strptime("{0} {1}".format(x,y),"%Y/%m/%d %H:%M:%S") for x,y in zip(df_laser['#gmt_date'],df_laser['gmt_time'])]
                 laser_all = pd.concat([laser_all,df_laser])
 
             #maybe only export a subset of columns??
-            print(laser_all)
             #export 
             laser_all.to_csv(os.path.join(self.outpath,"{0}_CleanedLidar.csv".format(self.output_prefix_box.text())),index=False)
 
         elif self.lidartypes_list.currentText() == 'LemHex (gpx)':
-            print("lemhex")
             #pull laser files
             lidar_files = [os.path.join(r, m) for r, dirs, files in os.walk(self.lidarpath) 
                                         for m in files if m.endswith(".GPX") and not m.startswith(".")]
@@ -231,8 +244,6 @@ class lidarwranglerWindow(QWidget):
             #multiple samples per second so take mean
             laser_all = laser_all.groupby('CorrDT').agg({'lat': 'first', 'lon': 'first', 'Laser_Alt': 'mean'}).reset_index()
 
-            print(laser_all)
-
             #export 
             laser_all.to_csv(os.path.join(self.outpath,"{0}_CleanedLidar.csv".format(self.output_prefix_box.text())),index=False)
 
@@ -254,7 +265,8 @@ class lidarvideoWindow(QWidget):
         
         self.grid_layout = QGridLayout()
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #add inputs
         welcome_label = QLabel("Welcome to the lidar-video match up tool!")
@@ -347,7 +359,7 @@ class lidarvideoWindow(QWidget):
         #### GRID LAYOUT ####
         #add labels and buttons to grid layout
         self.grid_layout.addWidget(welcome_label,0,0,1,6)
-        self.grid_layout.addItem(spacer, 1, 0,1,6)
+        self.grid_layout.addItem(spacer1, 1, 0,1,6)
 
         ## GPS FILE section
         self.grid_layout.addWidget(QLabel("Click to upload GPS time file"),2,1,1,1)
@@ -409,7 +421,7 @@ class lidarvideoWindow(QWidget):
 
         self.grid_layout.addWidget(self.outfold_sel_label, 6,4,1,2)
 
-        self.grid_layout.addItem(spacer, 7, 4,1,2)
+        self.grid_layout.addItem(spacer2, 7, 4,1,2)
 
         self.grid_layout.addWidget(lidarvideo_run_button,8,4,1,2)
 
@@ -538,8 +550,8 @@ class lidarvideoWindow(QWidget):
                 self.video_names = []
                 self.video_list = []
                 for root, dirs, files in os.walk(dir_path):
-                    self.video_names += [m for m in files if m.endswith(".MOV") & ~m.startswith(".")]
-                    self.video_list += [os.path.join(root,m) for m in files if m.endswith(".MOV") & ~m.startswith(".")]
+                    self.video_names += [m for m in files if m.endswith((".MOV",".MP4")) & ~m.startswith(".")]
+                    self.video_list += [os.path.join(root,m) for m in files if m.endswith((".MOV",".MP4")) & ~m.startswith(".")]
 
                 #pull first video to be displayed
                 first_video = self.video_names[0]
@@ -739,7 +751,8 @@ class lidarmatchWindow(QWidget):
         
         self.grid_layout = QGridLayout()
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #add inputs
         welcome_label = QLabel("Welcome to the lidar image match up tool!")
@@ -779,6 +792,11 @@ class lidarmatchWindow(QWidget):
         self.lidarfile_sel_label = QLabel("",self)
         self.lidarfile_sel_label.setStyleSheet("border: 1px dashed black; padding: 2px; font-style: italic;")
 
+        # rolling window checkbox and text enter
+        self.timewindowcheckbox = QCheckBox("Check if you want to find a lidar value within a window", self)
+        self.windowsize_box = QLineEdit()
+        self.windowsize_box.setValidator(QDoubleValidator()) 
+
         #output prefix and folder selection
         self.output_prefix_box = QLineEdit()
 
@@ -801,7 +819,7 @@ class lidarmatchWindow(QWidget):
         #### GRID LAYOUT ####
         #add labels and buttons to grid layout
         self.grid_layout.addWidget(welcome_label,0,0,1,6)
-        self.grid_layout.addItem(spacer, 1, 0,1,6)
+        self.grid_layout.addItem(spacer1, 1, 0,1,6)
 
         ### IMAGE LIST section
         self.grid_layout.addWidget(QLabel("Click to upload image list file"),2,2,1,2)
@@ -824,24 +842,29 @@ class lidarmatchWindow(QWidget):
         self.grid_layout.addWidget(QLabel("Select Video Prefix Parts:"),6,2,1,2)
 
         ### LIDAR FILE, OUTPUT SETTINGS, and RUN BUTTON
-        self.grid_layout.addWidget(QLabel("Click to select folder containing lidar files"),2,5,1,1)
+        self.grid_layout.addWidget(QLabel("Click to select folder containing lidar file"),2,5,1,1)
         self.grid_layout.addWidget(self.lidarfile_button,2,4,1,1)
 
         self.grid_layout.addWidget(self.lidarfile_sel_label, 3,4,1,2)
 
-        self.grid_layout.addWidget(QLabel("Output prefix:"),4,4,1,1)
-        self.grid_layout.addWidget(self.output_prefix_box,4,5,1,2)
+        self.grid_layout.addWidget(self.timewindowcheckbox,4,4,1,2)
 
-        self.grid_layout.addWidget(QLabel("Click to select folder where outputs should be saved"),5,5,1,1)
-        self.grid_layout.addWidget(outfold_button, 5,4,1,1)
+        self.grid_layout.addWidget(QLabel("Window size (in seconds)"),5,4,1,1)
+        self.grid_layout.addWidget(self.windowsize_box,5,5,1,2)
 
-        self.grid_layout.addWidget(self.outfold_sel_label, 6,4,1,2)
+        self.grid_layout.addWidget(QLabel("Output prefix:"),6,4,1,1)
+        self.grid_layout.addWidget(self.output_prefix_box,6,5,1,2)
 
-        self.grid_layout.addItem(spacer, 7, 4,1,2)
+        self.grid_layout.addWidget(QLabel("Click to select folder where outputs should be saved"),7,5,1,1)
+        self.grid_layout.addWidget(outfold_button, 7,4,1,1)
 
-        self.grid_layout.addWidget(lidarmatch_run_button,8,4,1,2)
+        self.grid_layout.addWidget(self.outfold_sel_label, 8,4,1,2)
 
-        self.grid_layout.addWidget(self.end_msg,9,4,1,2)
+        self.grid_layout.addItem(spacer2, 9, 4,1,2)
+
+        self.grid_layout.addWidget(lidarmatch_run_button,10,4,1,2)
+
+        self.grid_layout.addWidget(self.end_msg,11,4,1,2)
        
         # Create a scroll area and set your grid layout as its widget
         scroll_area = QScrollArea()
@@ -931,7 +954,8 @@ class lidarmatchWindow(QWidget):
                                                             x.split(self.image_delimiter_input.text())[min_ix],
                                                             x.split(self.image_delimiter_input.text())[sec_ix])
                                                             for x in self.dfimages['Image']]
-        self.dfimages['VideoTime'] = [datetime.strptime(x, "%H:%M:%S").time() for x in self.dfimages['VideoTime']]
+            
+        self.dfimages['VideoTime'] = [datetime.strptime(str(x), "%H:%M:%S").time() for x in self.dfimages['VideoTime']]
 
         #add column for video if need be (if checkbox unchecked)
         if self.imgvideocheckbox.isChecked():
@@ -944,9 +968,27 @@ class lidarmatchWindow(QWidget):
                             for x in self.dfimages['Image']]
 
         #### PART 2 - merge image and lidar ####
-        self.dflidar['VideoTime'] = [datetime.strptime((x.split()[-1]), "%H:%M:%S").time() for x in self.dflidar['VideoTime']]
+        self.dflidar['VideoTime'] = [datetime.strptime((str(x).split()[-1]), "%H:%M:%S").time() for x in self.dflidar['VideoTime']]
+        self.dflidar = self.dflidar.dropna(subset=['Laser_Alt'])
 
-        df_lidarmerge = self.dfimages.merge(self.dflidar[['VideoID','VideoTime','Laser_Alt']],how='left',on=['VideoID','VideoTime'])
+        if self.timewindowcheckbox.isChecked():
+            self.dfimages['ImgTime_s'] = [int(timedelta(hours=t.hour, minutes=t.minute, seconds=t.second).total_seconds()) for t in self.dfimages['VideoTime']]
+            self.dflidar['LidarTime_s'] = [int(timedelta(hours=t.hour, minutes=t.minute, seconds=t.second).total_seconds()) for t in self.dflidar['VideoTime']]
+
+            self.dfimages['MergeTime'] = [pd.Timestamp(str(x)) for x in self.dfimages['VideoTime']]
+            self.dflidar['MergeTime'] = [pd.Timestamp(str(x)) for x in self.dflidar['VideoTime']]
+
+            window = self.windowsize_box.text()
+
+            self.dfimages = self.dfimages.sort_values(by=['MergeTime'])
+            self.dflidar = self.dflidar.sort_values(by=['MergeTime'])
+
+            df_lidarmerge = pd.merge_asof(self.dfimages, self.dflidar[['VideoID','VideoTime','LidarTime_s','MergeTime','Laser_Alt']], on="MergeTime", by="VideoID",
+                                          direction="nearest",tolerance=pd.Timedelta("{0}s".format(window)),suffixes = ['_image','_lidar'])
+            df_lidarmerge['timediff_sec'] = df_lidarmerge["ImgTime_s"] - df_lidarmerge['LidarTime_s']
+            df_lidarmerge = df_lidarmerge.drop(columns=['ImgTime_s','LidarTime_s','MergeTime'])
+        else:
+            df_lidarmerge = self.dfimages.merge(self.dflidar[['VideoID','VideoTime','Laser_Alt']],how='left',on=['VideoID','VideoTime'])
 
         # export
         df_lidarmerge.to_csv(os.path.join(self.outpath,"{0}_LidarMerge.csv".format(self.output_prefix_box.text())),index=False)
@@ -969,7 +1011,8 @@ class lidarimageWindow(QWidget):
         
         self.grid_layout = QGridLayout()
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #add inputs
         welcome_label = QLabel("Welcome to the lidar image matchup tool!")
@@ -1046,6 +1089,11 @@ class lidarimageWindow(QWidget):
         self.lidarfile_sel_label = QLabel("", self)
         self.lidarfile_sel_label.setStyleSheet("border: 1px dashed black; padding: 2px; font-style: italic;")
 
+        # rolling window checkbox and text enter
+        self.timewindowcheckbox = QCheckBox("Check if you want to find a lidar value within a window", self)
+        self.windowsize_box = QLineEdit()
+        self.windowsize_box.setValidator(QDoubleValidator()) 
+
         #output prefix and folder selection
         self.output_prefix_box = QLineEdit()
 
@@ -1068,7 +1116,7 @@ class lidarimageWindow(QWidget):
         ### GRID LAYOUT ###
         #add labels and buttons to grid layout
         self.grid_layout.addWidget(welcome_label,0,0,1,6)
-        self.grid_layout.addItem(spacer, 1, 0,1,6)
+        self.grid_layout.addItem(spacer1, 1, 0,1,6)
 
         ## GPS FILE section
         self.grid_layout.addWidget(QLabel("Click to select folder containing GPS time images"),2,1,1,1)
@@ -1133,19 +1181,24 @@ class lidarimageWindow(QWidget):
 
         self.grid_layout.addWidget(self.lidarfile_sel_label, 3,4,1,2)
 
-        self.grid_layout.addWidget(QLabel("Output prefix:"),4,4,1,1)
-        self.grid_layout.addWidget(self.output_prefix_box,4,5,1,2)
+        self.grid_layout.addWidget(self.timewindowcheckbox,4,4,1,2)
 
-        self.grid_layout.addWidget(QLabel("Click to select folder where outputs should be saved"),5,5,1,1)
-        self.grid_layout.addWidget(outfold_button, 5,4,1,1)
+        self.grid_layout.addWidget(QLabel("Window size (in seconds)"),5,4,1,1)
+        self.grid_layout.addWidget(self.windowsize_box,5,5,1,2)
 
-        self.grid_layout.addWidget(self.outfold_sel_label, 6,4,1,2)
+        self.grid_layout.addWidget(QLabel("Output prefix:"),6,4,1,1)
+        self.grid_layout.addWidget(self.output_prefix_box,6,5,1,2)
 
-        self.grid_layout.addItem(spacer, 7, 4,1,2)
+        self.grid_layout.addWidget(QLabel("Click to select folder where outputs should be saved"),7,5,1,1)
+        self.grid_layout.addWidget(outfold_button, 7,4,1,1)
 
-        self.grid_layout.addWidget(lidarimage_run_button,8,4,1,2)
+        self.grid_layout.addWidget(self.outfold_sel_label, 8,4,1,2)
 
-        self.grid_layout.addWidget(self.end_msg,9,4,1,2)
+        self.grid_layout.addItem(spacer2, 9, 4,1,2)
+
+        self.grid_layout.addWidget(lidarimage_run_button,10,4,1,2)
+
+        self.grid_layout.addWidget(self.end_msg,11,4,1,2)
 
         # Create a scroll area and set your grid layout as its widget
         scroll_area = QScrollArea()
@@ -1398,7 +1451,26 @@ class lidarimageWindow(QWidget):
 
         # merge with lidar!
         self.laser_all['CorrDT'] = [datetime.strptime("{0}".format(x),"%Y-%m-%d %H:%M:%S") for x in self.laser_all['CorrDT']]
-        df_lidarimg = dfimg_x.merge(self.laser_all[['CorrDT','Laser_Alt']],how='left',on='CorrDT')
+        self.laser_all = self.laser_all.dropna(subset=['Laser_Alt'])
+
+        if self.timewindowcheckbox.isChecked():
+            self.df_imgx['MergeTime'] = [pd.Timestamp(str(x)) for x in self.df_imgx['CorrDT']]
+            self.laser_all['MergeTime'] = [pd.Timestamp(str(x)) for x in self.laser_all['CorrDT']]
+        
+            self.dfimg_x['ImgTime_s'] = [int(timedelta(hours=t.hour, minutes=t.minute, seconds=t.second).total_seconds()) for t in self.dfimg_x['MergeTime']]
+            self.laser_all['LidarTime_s'] = [int(timedelta(hours=t.hour, minutes=t.minute, seconds=t.second).total_seconds()) for t in self.laser_all['MergeTime']]
+
+            window = self.windowsize_box.text()
+
+            self.dfimages = self.dfimages.sort_values(by=['MergeTime'])
+            self.dflidar = self.dflidar.sort_values(by=['MergeTime'])
+
+            df_lidarmerge = pd.merge_asof(self.dfimg_x, self.laser_all[['CorrDT','LidarTime_s','MergeTime','Laser_Alt']], on="MergeTime",
+                                          direction="nearest",tolerance=pd.Timedelta("{0}s".format(window)),suffixes = ['_image','_lidar'])
+            df_lidarmerge['timediff_sec'] = df_lidarmerge["ImgTime_s"] - df_lidarmerge['LidarTime_s']
+            df_lidarmerge = df_lidarmerge.drop(columns=['ImgTime_s','LidarTime_s','MergeTime'])
+        else:
+            df_lidarimg = dfimg_x.merge(self.laser_all[['CorrDT','Laser_Alt']],how='left',on='CorrDT')
 
         #narrow down columns kept for export
         df_lidarimg[['SourceFile','Image','Laser_Alt']]
@@ -1432,7 +1504,13 @@ class collateWindow(QWidget):
         font.setBold(True)
         welcome_label.setFont(font)
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer5 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer6 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #animal ID
         aID_label = QLabel("Check if you want the Animal ID to be assigned\nbased on the name of the folder")
@@ -1487,12 +1565,12 @@ class collateWindow(QWidget):
 
         #add labels and buttons to grid layout
         grid_layout.addWidget(welcome_label,0,0,1,2)
-        grid_layout.addItem(spacer, 1, 0,1,2)
+        grid_layout.addItem(spacer1, 1, 0,1,2)
 
         grid_layout.addWidget(aID_label,2,1,1,1)
         grid_layout.addWidget(self.aIDcheckbox,2,0,1,1)
 
-        grid_layout.addItem(spacer, 3, 0,1,2)
+        grid_layout.addItem(spacer2, 3, 0,1,2)
 
         grid_layout.addWidget(safecheckbox_label,4,1,1,1)
         grid_layout.addWidget(self.safecheckbox,4,0,1,1)
@@ -1502,31 +1580,31 @@ class collateWindow(QWidget):
 
         grid_layout.addWidget(self.safety_sel_label,6,0,1,2)
 
-        grid_layout.addItem(spacer, 7, 0,1,2)
+        grid_layout.addItem(spacer3, 7, 0,1,2)
 
         grid_layout.addWidget(prefix_label,8,1,1,1)
         grid_layout.addWidget(self.prefix_box, 8, 0,1,1)
 
-        grid_layout.addItem(spacer, 9, 0,1,2)
+        grid_layout.addItem(spacer4, 9, 0,1,2)
 
         grid_layout.addWidget(mmxfold_label,10,1,1,1)
         grid_layout.addWidget(mmxfold_button, 10, 0,1,1)
 
         grid_layout.addWidget(self.mmxfold_sel_label,11,0,1,2)
 
-        grid_layout.addItem(spacer, 12, 0,1,2)
+        grid_layout.addItem(spacer5, 12, 0,1,2)
 
         grid_layout.addWidget(savefold_label,13,1,1,1)
         grid_layout.addWidget(savefold_button, 13, 0,1,1)
 
         grid_layout.addWidget(self.savefold_sel_label,14,0,1,2)
 
-        grid_layout.addItem(spacer, 15, 0,1,2)
+        grid_layout.addItem(spacer6, 15, 0,1,2)
 
         grid_layout.addWidget(outtypes_label,16,1,1,1)
         grid_layout.addWidget(self.outtypes_list,16,0,1,1)
 
-        grid_layout.addItem(spacer, 17, 0,1,2)
+        grid_layout.addItem(spacer7, 17, 0,1,2)
 
         grid_layout.addWidget(collate_button,18,0,1,2)
 
@@ -1587,7 +1665,7 @@ class collateWindow(QWidget):
         dup_csvs = []
         for c in csvs:
             df_temp = pd.read_csv(c)
-            image_name = os.path.split(df_temp.loc[df_temp['Object']=='Image Path','Value'].item())[-1]
+            image_name = os.path.split(str(df_temp.loc[df_temp['Object']=='Image Path','Value'].item()))[-1]
             df_temp['Image'] = image_name
             df_temp['csv'] = c
             df_temp['Object'] = [x.replace(".0",".00") if ".00" not in x else x for x in df_temp['Object']]
@@ -1717,7 +1795,11 @@ class bodycondWindow(QWidget):
         font = QFont(); font.setBold(True)
         welcome_label.setFont(font)
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer5 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #collatrix output file
         self.ccxfile_button = QPushButton("Collated Output File",self)
@@ -1730,7 +1812,7 @@ class bodycondWindow(QWidget):
 
         ## BV method choice
         self.BVmeth_list = QComboBox(self)
-        self.BVmeth_list.addItems(['Ellipse','Circle', "Both"])
+        self.BVmeth_list.addItems(['Circle','Ellipse', "Both"])
 
         ## note on ellipse settings
         ellipse_notes = QLabel("Note: ellipse method always uses lower = 0, upper = 100, and interval = 5. If you choose 'Both', enter values for the circle method.")
@@ -1785,14 +1867,14 @@ class bodycondWindow(QWidget):
 
         #add labels and buttons to grid layout
         grid_layout.addWidget(welcome_label,0,0,1,2)
-        grid_layout.addItem(spacer, 1, 0,1,2)
+        grid_layout.addItem(spacer1, 1, 0,1,2)
 
         grid_layout.addWidget(QLabel("Click to upload collated output"),2,1,1,1)
         grid_layout.addWidget(self.ccxfile_button,2,0,1,1)
 
         grid_layout.addWidget(self.ccxfile_sel_label,3,0,1,2)
 
-        grid_layout.addItem(spacer, 4, 0,1,2)
+        grid_layout.addItem(spacer2, 4, 0,1,2)
 
         grid_layout.addWidget(QLabel("Check if you want to calculate Body Volume"),5,1,1,1)
         grid_layout.addWidget(self.BVcheckbox,5,0,1,1)
@@ -1814,7 +1896,7 @@ class bodycondWindow(QWidget):
         grid_layout.addWidget(QLabel("Interval"),11,0,1,1)
         grid_layout.addWidget(self.BV_int_box,11,1,1,1)
 
-        grid_layout.addItem(spacer, 12, 0,1,2)
+        grid_layout.addItem(spacer3, 12, 0,1,2)
 
         grid_layout.addWidget(QLabel("Check if you want to calculate Body Area Index (BAI)"),13,1,1,1)
         grid_layout.addWidget(self.BAIcheckbox,13,0,1,1)
@@ -1834,7 +1916,7 @@ class bodycondWindow(QWidget):
         grid_layout.addWidget(QLabel("Interval"),18,0,1,1)
         grid_layout.addWidget(self.BAI_int_box,18,1,1,1)
 
-        grid_layout.addItem(spacer, 19, 0,1,2)
+        grid_layout.addItem(spacer4, 19, 0,1,2)
 
         grid_layout.addWidget(QLabel("Enter prefix for output file"),20,1,1,1)
         grid_layout.addWidget(self.prefix_box,20,0,1,1)
@@ -1844,7 +1926,7 @@ class bodycondWindow(QWidget):
 
         grid_layout.addWidget(self.savefold_sel_label,22,0,1,2)
 
-        grid_layout.addItem(spacer, 23, 0,1,2)
+        grid_layout.addItem(spacer5, 23, 0,1,2)
 
         grid_layout.addWidget(bodycond_button,24,0,1,2)
 
@@ -1866,7 +1948,6 @@ class bodycondWindow(QWidget):
             # Read the file using pandas
             self.dfccx = pd.read_csv(file_path)
             self.ccx_file_path = file_path
-        
 
     def select_dir(self, button_id):
         dir_path = DirSelector.select_dir()
@@ -1877,7 +1958,7 @@ class bodycondWindow(QWidget):
     
     def calc_bodycond(self):
         #set inputs
-        df_all = self.dfccx
+        df_all = self.dfccx; df_all['Image_ID'] = df_all['Image_ID'].astype(str)
         prefix = self.prefix_box.text()
         outfold = self.savepath
 
@@ -1898,9 +1979,7 @@ class bodycondWindow(QWidget):
                 BV_inputs = "TL name = {0}\n\nBV method = {1}\n\nlower bound = {2}\n\nupper bound = {3}\n\ninterval = {4}".format(tl_name,bv_method,lower,upper,interval)
             elif bv_method == 'Both':
                 df_ell = self.bv_ellipse(df_all,tl_name)
-                print(df_ell)
                 df_frust = self.bv_circle(df_all,tl_name,interval,lower,upper)
-                print(df_frust)
                 df_vol = pd.merge(df_ell,df_frust,on=['Image_ID','Image'])
                 BV_inputs = "TL name = {0}\n\nBV method = Both\n\nFor Ellipse: set lower, upper, and interval of 0,100,5\n\nFor circular:lower bound = {1}\n\nupper bound = {2}\n\ninterval = {3}".format(tl_name,lower,upper,interval)
 
@@ -1928,9 +2007,7 @@ class bodycondWindow(QWidget):
                 df_bai = self.bai_trapezoid(df_allx,tl_name,b_interval,b_lower,b_upper)
             elif bai_method == 'Both':
                 df_par = self.bai_parabola(df_allx,tl_name,b_interval,b_lower,b_upper)
-                print(df_par)
                 df_trap = self.bai_trapezoid(df_allx,tl_name,b_interval,b_lower,b_upper)
-                print(df_trap)
                 df_bai = pd.merge(df_par,df_trap,on = ['Image_ID','Image'])
 
             df_all1 = pd.merge(df_allx,df_bai,on=['Image_ID','Image'])
@@ -1944,8 +2021,6 @@ class bodycondWindow(QWidget):
             df_all1 = df_all1.drop(['index'],axis=1)
         else:
             df_all1 = df_all1
-
-        print(df_all1)
 
         outcsv = os.path.join(outfold,"{0}_bodycondition.csv".format(prefix))
         df_all1.to_csv(outcsv,sep = ',',index_label = 'IX')
@@ -2201,7 +2276,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         
         #set window title
-        self.setWindowTitle("CollatriX Home (v2.0 beta)")
+        self.setWindowTitle("CollatriX Home ({0})".format(cx_version))
 
         #set sizing of window
         D = self.screen().availableGeometry()
@@ -2232,7 +2307,10 @@ class MainWindow(QMainWindow):
         manual = QPushButton("Manual",self)
         manual.clicked.connect(lambda: webbrowser.open('https://github.com/cbirdferrer/collatrix/files/12324107/CollatriX_v2_BETA_manual_230811.pdf'))
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        spacer4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         # Create instances of your window classes
         self.lidarwrangle_window = lidarwranglerWindow()
@@ -2293,12 +2371,12 @@ class MainWindow(QMainWindow):
         grid_layout.addWidget(welcome_label,0,0,1,4)
         grid_layout.addWidget(manual_label,1,2,1,1)
         grid_layout.addWidget(manual,1,1,1,1)
-        grid_layout.addItem(spacer, 2, 0,1,4)
+        grid_layout.addItem(spacer1, 2, 0,1,4)
 
         grid_layout.addWidget(wrangle_label,3,1,1,2)
         grid_layout.addWidget(button0_label,4,2,1,1)
         grid_layout.addWidget(button0,4,1,1,1)
-        grid_layout.addItem(spacer, 5, 0,1,4)
+        grid_layout.addItem(spacer2, 5, 0,1,4)
 
         grid_layout.addWidget(video_label,6,0,1,2)
         grid_layout.addWidget(button1_label,7,1,1,1)
@@ -2309,7 +2387,7 @@ class MainWindow(QMainWindow):
         grid_layout.addWidget(image_label,6,2,1,2)
         grid_layout.addWidget(button1y_label,7,3,1,1)
         grid_layout.addWidget(button1y,7,2,1,1)
-        grid_layout.addItem(spacer, 9, 0,1,4)
+        grid_layout.addItem(spacer3, 9, 0,1,4)
 
         grid_layout.addWidget(collate_label,10,1,1,2)
         grid_layout.addWidget(button2_label,11,2,1,1)
@@ -2318,7 +2396,7 @@ class MainWindow(QMainWindow):
         grid_layout.addWidget(bodycond_label,12,1,1,2)
         grid_layout.addWidget(button3_label,13,2,1,1)
         grid_layout.addWidget(button3, 13, 1,1,1)
-        grid_layout.addItem(spacer, 14, 0,1,4)   
+        grid_layout.addItem(spacer4, 14, 0,1,4)   
 
         grid_layout.addWidget(self.exit,15,0,1,4)
 
@@ -2348,11 +2426,9 @@ class MainWindow(QMainWindow):
         choice = QMessageBox.question(self, 'exit', "Exit program?",
                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if choice == QMessageBox.StandardButton.Yes:
-            self.deleteLater()
-            self.close()
+            QApplication.quit() # Quit applications
         else:
             pass
-
 
 # Program crash hook for error logging
 def except_hook(exc_type, exc_value, exc_tb):
@@ -2378,15 +2454,16 @@ def except_hook(exc_type, exc_value, exc_tb):
                 file.write("Machine: " + platform.machine() + '\n')
                 file.write("Processor: " + platform.processor() + '\n')
                 file.write("Current Working Directory" + os.getcwd() + '\n')
-                file.write("CollatriX version: 2.0 beta" + '\n'+ '\n')
+                file.write("CollatriX {0}".format(cx_version) + '\n'+ '\n')
                 file.write(tb)
 
-    # QApplication.quit() # Quit applications
-
-if __name__ == '__main__':
+def main():
     sys.excepthook = except_hook
-    app = QApplication([])
+    app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     app.exec()
-    sys.exit()
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()
