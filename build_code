@@ -1,3 +1,0 @@
-cd github
-conda build collatrix
-conda build purge
